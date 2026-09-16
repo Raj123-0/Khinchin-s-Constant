@@ -3,43 +3,32 @@
 Khinchin's Constant Calculator (HPC OEIS Edition)
 =================================================
 Calculates Khinchin's constant (K_0) to exactly [N] significant digits using 
-Riemann Zeta continued fraction expansions, 12-core parallel chunking, 
-C-accelerated gmpy2 math, and strict OEIS truncation formatting.
+C-accelerated gmpy2 math and strict OEIS truncation formatting.
 """
 
 import sys
-import math
 import time
 import argparse
-import multiprocessing as mp
-import gc
 import os
 
+# Force mpmath to use gmpy2 for high-performance arbitrary-precision arithmetic
 os.environ['MPMATH_GMPY2'] = '1'
-import gmpy2
 import mpmath
 
-sys.set_int_max_str_digits(0)
+# Allow printing/converting very large integers if supported
+if hasattr(sys, "set_int_max_str_digits"):
+    sys.set_int_max_str_digits(0)
 
-NUM_WORKERS = 12
 
-def worker_khinchin_chunk(args):
-    start, end, dps = args
-    mpmath.mp.dps = dps
-    ctx = mpmath.mp
+def save_oeis_files(constant_name: str, digits_str: str, target_digits: int) -> None:
+    """
+    Saves the calculated digits of the constant to a raw text file and an OEIS b-file.
 
-    partial_sum = ctx.mpf(0)
-    for n in range(start, end):
-        inner_sum = ctx.mpf(0)
-        sign = 1
-        for k in range(1, 2 * n):
-            inner_sum += ctx.mpf(sign) / ctx.mpf(k)
-            sign = -sign
-        term = ((ctx.zeta(2 * n) - 1) / ctx.mpf(n)) * inner_sum
-        partial_sum += term
-    return partial_sum
-
-def save_oeis_files(constant_name, digits_str, target_digits):
+    Args:
+        constant_name: The name of the constant (e.g., "Khinchin").
+        digits_str: The string of digits (without decimal point).
+        target_digits: The number of digits to save.
+    """
     clean_digits = digits_str.replace(".", "")[:target_digits]
     
     raw_filename = f"{constant_name}_{target_digits}_digits.txt"
@@ -53,7 +42,18 @@ def save_oeis_files(constant_name, digits_str, target_digits):
             f.write(f"{idx} {digit}\n")
     print(f"Saved OEIS b-file output to {b_filename}")
 
-def compute_khinchin_hpc(target_digits):
+
+def compute_khinchin_hpc(target_digits: int) -> str:
+    """
+    Computes Khinchin's constant to the target number of digits.
+
+    Args:
+        target_digits: The number of significant digits to compute.
+
+    Returns:
+        A string of the computed digits (without decimal point).
+    """
+    # Add guard digits to prevent trailing digit rounding errors
     dps_working = target_digits + 50
     mpmath.mp.dps = dps_working
     ctx = mpmath.mp
@@ -62,22 +62,24 @@ def compute_khinchin_hpc(target_digits):
     khinchin_str = ctx.nstr(khinchin_val, dps_working)
     clean_digits = khinchin_str.replace(".", "")[:target_digits]
 
-    del khinchin_val
-    gc.collect()
-
     save_oeis_files("Khinchin", clean_digits, target_digits)
     return clean_digits
 
-def main():
+
+def main() -> None:
+    """
+    Main CLI entry point.
+    """
     parser = argparse.ArgumentParser(description="HPC Khinchin OEIS Calculator")
     parser.add_argument("-n", "--digits", type=int, default=1000, help="Target digits (default: 1000)")
     args = parser.parse_args()
 
     t0 = time.time()
-    digits = compute_khinchin_hpc(args.digits)
+    _ = compute_khinchin_hpc(args.digits)
     t1 = time.time()
 
-    print(f"Execution finished in {t1 - t0:.4f} seconds using {NUM_WORKERS} cores.")
+    print(f"Execution finished in {t1 - t0:.4f} seconds.")
+
 
 if __name__ == "__main__":
     main()
